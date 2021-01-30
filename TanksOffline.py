@@ -26,6 +26,8 @@ tiles_group = pygame.sprite.Group()
 enemy_group = pygame.sprite.Group()
 player_group = pygame.sprite.Group()
 bullets_group = pygame.sprite.Group()
+wall_group = pygame.sprite.Group()
+grass_group = pygame.sprite.Group()
 
 
 def load_image(name, colorkey=None):
@@ -43,7 +45,8 @@ def load_image(name, colorkey=None):
 tile_images = {
     'wall': load_image('field_1.png'),
     'empty': load_image('field_0.png'),
-    'brick': load_image('field_2.png')
+    'brick': load_image('field_2.png'),
+    'b_wall': load_image('field_3.png')
 }
 
 tile_width = tile_height = 50
@@ -56,6 +59,7 @@ def terminate():
 
 class Player(pygame.sprite.Sprite):
     def __init__(self, pos_x, pos_y):
+        self.reload = 0
         self.step = 32
         self.move_step = 4
         self.side = 'u'
@@ -69,6 +73,7 @@ class Player(pygame.sprite.Sprite):
             self.step * pos_x, self.step * pos_y)
 
     def turn_move(self, move_side):
+        step = 0, 0
         if move_side != self.side:
             if move_side == 'r':
                 self.image = self.r_image
@@ -80,23 +85,38 @@ class Player(pygame.sprite.Sprite):
                 self.image = self.d_image
         else:
             if move_side == 'r':
-                self.rect.x += self.move_step
+                step = 0, 4
             elif move_side == 'l':
-                self.rect.x -= self.move_step
+                step = 0, -4
             elif move_side == 'u':
-                self.rect.y -= self.move_step
+                step = -4, 0
             elif move_side == 'd':
-                self.rect.y += self.move_step
+                step = 4, 0
+            self.rect.x += step[1]
+            self.rect.y += step[0]
+            if pygame.sprite.spritecollideany(self, wall_group):
+                self.rect.x -= step[1]
+                self.rect.y -= step[0]
         self.side = move_side
 
 
 class Tile(pygame.sprite.Sprite):
     def __init__(self, tile_type, pos_x, pos_y):
+        self.type = tile_type
         self.step = 32
+        self.is_dead = False
+        self.b_wall = load_image('field_3.png')
         super().__init__(tiles_group, all_sprites)
+        if self.type == "wall" or self.type == "brick":
+            super().__init__(wall_group)
         self.image = tile_images[tile_type]
         self.rect = self.image.get_rect().move(
             self.step * pos_x, self.step * pos_y)
+
+    def wall_update(self):
+        if pygame.sprite.spritecollideany(self, bullets_group) and self.type == 'brick':
+            self.is_dead = True
+            self.image = self.b_wall
 
 
 class Bullet(pygame.sprite.Sprite):
@@ -135,7 +155,8 @@ class Bullet(pygame.sprite.Sprite):
     def bullet_update(self):
         self.rect.x, self.rect.y = self.rect.x + self.step_side[0], \
                                    self.rect.y + self.step_side[1]
-        print(self.rect.x, self.rect.y)
+        if pygame.sprite.spritecollideany(self, wall_group):
+            self.is_dead = True
 
 
 class Game():
@@ -181,11 +202,14 @@ while running:
     tiles_group.draw(screen)
     player_group.draw(screen)
     bullets_group.draw(screen)
+    player.reload += 1
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
         elif event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_LEFT or event.key == pygame.K_a:
+            if event.key == pygame.K_ESCAPE:
+                running = False
+            elif event.key == pygame.K_LEFT or event.key == pygame.K_a:
                 side = 'l'
                 player.turn_move(side)
             elif event.key == pygame.K_RIGHT or event.key == pygame.K_d:
@@ -198,8 +222,16 @@ while running:
                 side = 'd'
                 player.turn_move(side)
             if event.key == pygame.K_SPACE:
-                bullet = Bullet(player.rect.x, player.rect.y, side, 'p')
-    for sprite in bullets_group:
-        sprite.bullet_update()
+                if player.reload >= 10:
+                    bullet = Bullet(player.rect.x, player.rect.y, side, 'p')
+                    player.reload = 0
+    for sprit in bullets_group:
+        if sprit.is_dead:
+            for wall in wall_group:
+                wall.wall_update()
+                if wall.is_dead:
+                    wall_group.remove(wall)
+            bullets_group.remove(sprit)
+        sprit.bullet_update()
     clock.tick(fps)
     pygame.display.flip()
